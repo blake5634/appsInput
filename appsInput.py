@@ -1,6 +1,7 @@
 import csv
 import sys
 import datetime as dt
+from itertools import combinations
 
 def error(msg):
     print(f'Error: {msg}')
@@ -12,7 +13,7 @@ def error(msg):
 #
 ifURL = 'https://facultysearch.interfolio.com/28343/positions/171499'
 TESTROW = -1  # <0 = no test printout
-SORTING = False  # can be changed in user menu
+SORTING = True  # can be changed in user menu
 
 # define col headers of our working files
 outputCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRC', 'Id','Link', 'Last date', 'Which area','Highest degree school']
@@ -43,7 +44,7 @@ def help():
         ''')
 
 class collection:
-    def __init__(self,headerCols):
+    def __init__(self, headerCols):
         self.list = []
         self.header = headerCols
         self.len = 0
@@ -54,6 +55,32 @@ class collection:
 
     def __len__(self):
         return len(self.list)
+
+    def assignRevs(self):
+        revlist = ['Blake', 'Amy', 'Baosen', 'Sajjad']
+        nrevs = len(revlist)
+        combos = list(combinations(revlist,2))
+        # print(revlist)
+        # print(combos)
+        cycle = 3
+        p1 = 0
+        j = 0
+        for app in self.list:
+            if (app.crev01 is None) and (app.crev02 is None):
+                if j%cycle==0:
+                    p1 = (p1+1)%len(combos)
+                j += 1
+                app.crev01 = combos[p1][0]
+                app.crev02 = combos[p1][1]
+                print(f'{app.iD:10} {app.crev01} {app.crev02}')
+        heads = self.header
+        heads.remove('Research')
+        heads.remove('Teaching')
+        heads.remove('WIRC')
+        heads.insert(3,'rev 1')
+        heads.insert(4,'rev 1')
+        heads.insert(5,'Wscore')
+        self.header = heads
 
 class applicant:
     def __init__(self,fn,ln,iD,aD,ar,ins,scores=None):
@@ -75,6 +102,8 @@ class applicant:
         # self.createDate = dt.datetime.today()
         self.area = ar
         self.ins = ins
+        self.crev01 = None
+        self.crev02 = None
 
 
     def __repr__(self):
@@ -87,24 +116,27 @@ class applicant:
         # t += f'{self.createDate.strftime('%Y-%m-%d'):15}'
         return t
 
-    def genSSRow(self):
-    #
+    def genSSRow(self,shType='faculty'):
     # # desired output cols, in order
     # f = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRK', 'Id','Link', 'Last date', 'Which area']
-        s1 = self.teaching
-        s2 = self.research
-        s3 = self.wirc
-        # reviewer scores if present
-        if (s1 ) is None:
-            s1 = ''
-        if (s2 ) is None:
-            s2 = ''
-        if (s3 ) is None:
-            s3 = ''
-        r = [self.fName, self.lName,  s1, s2, s3, self.iD, self.url, self.appDate,self.area, self.ins]
-        return r
-
-
+        if shType=='faculty':
+            s1 = self.teaching
+            s2 = self.research
+            s3 = self.wirc
+            # reviewer scores if present
+            if (s1 ) is None:
+                s1 = ''
+            if (s2 ) is None:
+                s2 = ''
+            if (s3 ) is None:
+                s3 = ''
+            r = [self.fName, self.lName,  s1, s2, s3, self.iD, self.url, self.appDate,self.area, self.ins]
+            return r
+        elif shType=='committee':
+            r = [self.fName, self.lName,  self.iD, self.crev01, self.crev02,'', self.url, self.appDate,self.area, self.ins]
+            return r
+        else:
+            error('Unknown SSRow type: ', shType)
 
 def readWorkingFile(inFileName):
 
@@ -231,6 +263,26 @@ def writeOut(applicants, ofn):
 
     print(f'Output Saved: {ofn}')
 
+
+def writeCmteAssign(applicants, ofn):
+    #
+    #  Save new output file (sorted date, then by ID)
+    #
+    if SORTING:
+        applicants = sortApps(applicants)
+
+    of = open(ofn, 'w')
+    writer = csv.writer(of)
+
+    #write out the header row
+    writer.writerow(applicants.header)
+    for a in applicants.list:
+        row = a.genSSRow(shType='committee')  # add reviewer fields
+        writer.writerow(row)
+    of.close()
+
+    print(f'Committee Assignments Output Saved: {ofn}')
+
 def menu(mdat):
     try:
         x = mdat['labels']
@@ -281,6 +333,7 @@ if __name__ == '__main__':
 
     mitems = ['Read, and Convert Download .csv',
               'Read, convert, and MERGE download .csv',
+              'Create cmte scores',
               'Set sorting on output save',
               'Clear sorting on output save',
               'Quit']
@@ -297,7 +350,7 @@ if __name__ == '__main__':
             writeOut(applicants, ofn)
 
         # read in a download csv and merge it with an existing shareable sheet
-        if j==1:
+        if selcmd.startswith('Read, convert, and MERGE'):
             # generate collections for new download (newapps) and existing processed data (oldapps)
             newfn = sys.argv[1]
             newapps = readDownload(newfn)
@@ -309,6 +362,18 @@ if __name__ == '__main__':
             ofn = 'newsheetMerge.csv'
             writeOut(updatedApps, ofn)
 
+        #
+        #  Assign cmte members to a collection
+        #
+        if selcmd.startswith('Create cmte'):
+            oldapps = readDownload(sys.argv[1])
+            oldapps.assignRevs()
+            ofn='CmteRevAssign.csv'
+            writeCmteAssign(oldapps, ofn)
+
+        #
+        # Set Sorting Option Flag
+        #
         if selcmd.startswith('Set'):
             SORTING = True
             print('\nSorting is ENABLED')
