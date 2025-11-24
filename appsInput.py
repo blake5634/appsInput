@@ -6,13 +6,20 @@ def error(msg):
     print(f'Error: {msg}')
     quit()
 
-ifURL = 'https://facultysearch.interfolio.com/28343/positions/171499/'
+
+#
+#  set some configurations
+#
+ifURL = 'https://facultysearch.interfolio.com/28343/positions/171499'
 TESTROW = -1  # <0 = no test printout
-SORTING = False
+SORTING = False  # can be changed in user menu
 
 # define col headers of our working files
 outputCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRC', 'Id','Link', 'Last date', 'Which area']
 
+
+#
+#   Begin code
 def help():
     print(f'''
     Log into {ifURL}
@@ -34,6 +41,18 @@ def help():
 
         ''')
 
+class collection:
+    def __init__(self,headerCols):
+        self.list = []
+        self.header = headerCols
+        self.len = 0
+
+    def add(self,app):
+        self.list.append(app)
+        self.len+=1
+
+    def __len__(self):
+        return len(self.list)
 
 class applicant:
     def __init__(self,fn,ln,iD,aD,ar,scores=None):
@@ -50,7 +69,7 @@ class applicant:
 
         self.iD = iD
         # self.url = 'https://facultysearch.interfolio.com/28343/positions/171499/applications/' + iD
-        self.url = ifURL + iD
+        self.url = ifURL + '/applications/' + iD
         self.appDate = aD
         # self.createDate = dt.datetime.today()
         self.area = ar
@@ -68,7 +87,7 @@ class applicant:
     def genSSRow(self):
     #
     # # desired output cols, in order
-    # outputCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRK', 'Id','Link', 'Last date', 'Which area']
+    # f = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRK', 'Id','Link', 'Last date', 'Which area']
         s1 = self.teaching
         s2 = self.research
         s3 = self.wirc
@@ -100,7 +119,8 @@ def readWorkingFile(inFileName):
             print('input Working file header: ', inputHeaderRow)
             print('               outputCols: ', outputCols)
             error('readWorking: input header mismatch')
-    existApps = []
+
+    existApps = collection(outputCols)
     for r in data:
         fn  = r[0]
         ln  = r[1]
@@ -112,7 +132,7 @@ def readWorkingFile(inFileName):
         ad  = r[7]
         ar  = r[8]
         tmp = applicant(fn,ln,idn,ad,ar, scores=[tch,rsr,wir])
-        existApps.append(tmp)
+        existApps.add(tmp)
     return existApps
 
 def readDownload(inFileName):
@@ -146,7 +166,8 @@ def readDownload(inFileName):
 
     # print('oldcols: ',oldcols)
 
-    applicants = []
+    applicants = collection(outputCols)
+
     j = 0
     for row in data:
         fn = row[oldcols[0]]
@@ -155,7 +176,7 @@ def readDownload(inFileName):
         date = row[oldcols[3]][0:10]
         ar = row[oldcols[4]]
         tmp = applicant(fn,ln,iD,date,ar)
-        applicants.append(tmp)
+        applicants.add(tmp)
         if j==TESTROW:
             print('TestRow: ', row)
             m=0
@@ -170,38 +191,39 @@ def readDownload(inFileName):
 
     f.close()
 
-    if TESTROW > 0:
-        print(applicants[TESTROW])
+    if TESTROW >= 0:
+        print(applicants.apps[TESTROW])
         print('')
-        print(applicants[TESTROW].genSSRow())
+        print(applicants.apps[TESTROW].genSSRow())
 
     return applicants
 
 
-def merge(apps1, apps2):
+def mergeCollections(apps1, apps2):
     """Merge two lists of applicant objects, removing duplicates by iD. (thanks Claude)"""
-    seen = {app.iD for app in apps1}
-    return apps1 + [app for app in apps2 if app.iD not in seen]
+    seen = {app.iD for app in apps1.list}
+    return apps1.list + [app for app in apps2.list if app.iD not in seen]
 
 def sortApps(applicants):
     print('Sorting (got here)')
     """Sort applicants by date, then by iD."""
-    return sorted(applicants, key=lambda app: (dt.datetime.strptime(app.appDate.strip(), '%m/%d/%Y'), app.iD))
+    applicants.list =  sorted(applicants.list, key=lambda app: (dt.datetime.strptime(app.appDate.strip(), '%m/%d/%Y'), app.iD)).copy()
+    return applicants
 
-def writeOut(applicants, ofn, outHeader):
+def writeOut(applicants, ofn):
     #
     #  Save new output file (sorted date, then by ID)
     #
     # ofn = 'newsheet.csv'
     if SORTING:
-        applicants = sortApps(applicants).copy()
+        applicants = sortApps(applicants)
 
     of = open(ofn, 'w')
     writer = csv.writer(of)
 
     #write out the header row
-    writer.writerow(outHeader )
-    for a in applicants:
+    writer.writerow(applicants.header)
+    for a in applicants.list:
         row = a.genSSRow()
         writer.writerow(row)
     of.close()
@@ -271,17 +293,20 @@ if __name__ == '__main__':
             # readConvert(sys.argv[1])
             ofn = 'newsheet.csv'
             applicants = readDownload(sys.argv[1])
-            writeOut(applicants, ofn, outputCols)
+            writeOut(applicants, ofn)
 
         # read in a download csv and merge it with an existing shareable sheet
         if j==1:
+            # generate collections for new download (newapps) and existing processed data (oldapps)
             newfn = sys.argv[1]
             newapps = readDownload(newfn)
             oldfn = input('Enter existing working csv: ')
             oldapps= readWorkingFile(oldfn.strip())
-            updatedApps = merge(newapps, oldapps)
+            updatedAppsList = mergeCollections(newapps, oldapps)  # returns only list
+            updatedApps = collection(oldapps.header)
+            updatedApps.list = updatedAppsList
             ofn = 'newsheetMerge.csv'
-            writeOut(updatedApps, ofn, outputCols)
+            writeOut(updatedApps, ofn)
 
         if selcmd.startswith('Set'):
             SORTING = True
