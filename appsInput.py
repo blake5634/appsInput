@@ -15,7 +15,7 @@ TESTROW = -1  # <0 = no test printout
 SORTING = False  # can be changed in user menu
 
 # define col headers of our working files
-outputCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRC', 'Id','Link', 'Last date', 'Which area']
+outputCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRC', 'Id','Link', 'Last date', 'Which area','Highest degree school']
 
 
 #
@@ -29,6 +29,7 @@ def help():
     Select following columns:
       "Selected": ALL
       "Application":  Initial Submission Date
+                      Highest Degree Institution
       "Forms/Research Area:":
                 Which Area best describes
                 (Main Research Area
@@ -55,7 +56,7 @@ class collection:
         return len(self.list)
 
 class applicant:
-    def __init__(self,fn,ln,iD,aD,ar,scores=None):
+    def __init__(self,fn,ln,iD,aD,ar,ins,scores=None):
         self.fName = fn
         self.lName = ln
         if scores is not None:
@@ -73,6 +74,8 @@ class applicant:
         self.appDate = aD
         # self.createDate = dt.datetime.today()
         self.area = ar
+        self.ins = ins
+
 
     def __repr__(self):
         t = ''
@@ -98,7 +101,7 @@ class applicant:
             s2 = ''
         if (s3 ) is None:
             s3 = ''
-        r = [self.fName, self.lName,  s1, s2, s3, self.iD, self.url, self.appDate,self.area]
+        r = [self.fName, self.lName,  s1, s2, s3, self.iD, self.url, self.appDate,self.area, self.ins]
         return r
 
 
@@ -131,7 +134,8 @@ def readWorkingFile(inFileName):
         lk  = r[6]
         ad  = r[7]
         ar  = r[8]
-        tmp = applicant(fn,ln,idn,ad,ar, scores=[tch,rsr,wir])
+        ins = r[9]
+        tmp = applicant(fn,ln,idn,ad,ar,ins, scores=[tch,rsr,wir])
         existApps.add(tmp)
     return existApps
 
@@ -143,39 +147,36 @@ def readDownload(inFileName):
 
     data = csv.reader(f)
 
-    # expected input columns (possibly among others)
-    inputHeads = ['Firstname', 'Lastname', 'Last date', 'Which','Id','Position']
-
     # desired output  order of the input cols we select
-    selectedCols = ['Firstname', 'Lastname', 'Id', 'Last date', 'Which area']
+    selectedCols = ['Firstname', 'Lastname', 'Id', 'Last date', 'Which area', 'Highest degree school']
 
     # read the input header
     inputHeaderRow = next(data)
 
-    # print('Input Header: ', inputHeaderRow)
-    # print('Output Header: ',outputCols)
+    print('Input Header: ', inputHeaderRow)
+    print('Output Header: ',outputCols)
 
     # print('Selected Output Columns: ',selectedCols)
 
     oldcols=[]
-    for oh in selectedCols:
+    for selHdrCol in selectedCols:
         for i,ht in  enumerate(inputHeaderRow):
-            if ht.startswith(oh):
-                # outputHeaderRow.append(ht)
+            if ht.startswith(selHdrCol):
                 oldcols.append(i)
 
-    # print('oldcols: ',oldcols)
+    print('oldcols: ',oldcols)
 
     applicants = collection(outputCols)
 
     j = 0
     for row in data:
-        fn = row[oldcols[0]]
+        fn = row[oldcols[0]]  # oldcols is in 'selectedCols' order
         ln = row[oldcols[1]]
         iD = row[oldcols[2]]
         date = row[oldcols[3]][0:10]
         ar = row[oldcols[4]]
-        tmp = applicant(fn,ln,iD,date,ar)
+        ins = row[oldcols[5]]  # highest degree school
+        tmp = applicant(fn,ln,iD,date,ar,ins)
         applicants.add(tmp)
         if j==TESTROW:
             print('TestRow: ', row)
