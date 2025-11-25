@@ -5,6 +5,7 @@ from itertools import combinations
 
 def error(msg):
     print(f'Error: {msg}')
+    help()
     quit()
 
 
@@ -44,7 +45,10 @@ def help():
         ''')
 
 class collection:
-    def __init__(self, headerCols):
+    def __init__(self, headerCols, coltype):
+        if coltype not in ['Assignments', 'WorkingFile','Downloads']:
+            error('collection created with invalid type: ', coltype)
+        self.colType = coltype
         self.list = []
         self.header = headerCols
         self.len = 0
@@ -74,11 +78,13 @@ class collection:
                 app.crev02 = combos[p1][1]
                 print(f'{app.iD:10} {app.crev01} {app.crev02}')
         heads = self.header
-        heads.remove('Research')
-        heads.remove('Teaching')
-        heads.remove('WIRC')
+        if self.colType=='Working':
+            heads.remove('Research')
+            heads.remove('Teaching')
+            heads.remove('WIRC')
+            self.colType = 'Assignments'
         heads.insert(3,'rev 1')
-        heads.insert(4,'rev 1')
+        heads.insert(4,'rev 2')
         heads.insert(5,'Wscore')
         self.header = heads
 
@@ -138,6 +144,48 @@ class applicant:
         else:
             error('Unknown SSRow type: ', shType)
 
+def readCmteAssgmtsFile(inFileName):
+    #
+    #  read in a committee review assignments file
+    #
+    # check the input file
+    if 'Ass' not in inFileName:
+        error('readWorkingFile: filename does not contain "Ass": {inFileName}')
+
+    f = open(inFileName, 'r',encoding='utf-8-sig')
+
+    data = csv.reader(f)
+
+    # read the input header
+    inputHeaderRow = next(data)
+
+    # for i,c in enumerate(inputHeaderRow):
+    #     if (c != outputCols[i]):
+    #         print('input Working file header: ', inputHeaderRow)
+    #         print('               outputCols: ', outputCols)
+    #         error('readWorking: input header mismatch')
+
+    existApps = collection(inputHeaderRow, 'Assignments')  # make a header just like the Assignments file
+
+    #  cmte assignments header:
+    # Firstname, Lastname, Id, rev 1,rev 2, Wscore, Link, Last date, Which area, Highest degree school
+
+    for r in data:
+        fn   = r[0]  # cmte ass. header
+        ln   = r[1]
+        idn  = r[2]
+        rev1 = r[3]
+        rev2 = r[4]
+        wsc = r[5]
+        lk  = r[6]
+        ad  = r[7]
+        ar  = r[8]
+        ins = r[9]
+        tmp = applicant(fn,ln,idn,ad,ar,ins )
+        existApps.add(tmp)
+    return existApps
+
+
 def readWorkingFile(inFileName):
 
     #
@@ -155,7 +203,7 @@ def readWorkingFile(inFileName):
             print('               outputCols: ', outputCols)
             error('readWorking: input header mismatch')
 
-    existApps = collection(outputCols)
+    existApps = collection(outputCols,'WorkingFile')
     for r in data:
         fn  = r[0]
         ln  = r[1]
@@ -198,7 +246,7 @@ def readDownload(inFileName):
 
     print('oldcols: ',oldcols)
 
-    applicants = collection(outputCols)
+    applicants = collection(outputCols,'WorkingFile')
 
     j = 0
     for row in data:
@@ -230,6 +278,10 @@ def readDownload(inFileName):
         print(applicants.apps[TESTROW].genSSRow())
 
     return applicants
+
+def selectNewAppstoAssign(appsNew, appsOld):
+    seen = {app.iD for app in appsOld.list}
+    return [app for app in appsNew.list if app.iD not in seen]
 
 
 def mergeCollections(apps1, apps2):
@@ -334,6 +386,7 @@ if __name__ == '__main__':
     mitems = ['Read, and Convert Download .csv',
               'Read, convert, and MERGE download .csv',
               'Create cmte scores',
+              'Create new cmte scores from Download',
               'Set sorting on output save',
               'Clear sorting on output save',
               'Quit']
@@ -343,8 +396,7 @@ if __name__ == '__main__':
         j, selcmd = menu(mdata)
 
         # read in a download csv and produce a shareable sheet
-        if j==0:
-            # readConvert(sys.argv[1])
+        if selcmd.startswith('Read, and Convert Down'):
             ofn = 'newsheet.csv'
             applicants = readDownload(sys.argv[1])
             writeOut(applicants, ofn)
@@ -357,19 +409,35 @@ if __name__ == '__main__':
             oldfn = input('Enter existing working csv: ')
             oldapps= readWorkingFile(oldfn.strip())
             updatedAppsList = mergeCollections(newapps, oldapps)  # returns only list
-            updatedApps = collection(oldapps.header)
+            updatedApps = collection(oldapps.header,'WorkingFile')
             updatedApps.list = updatedAppsList
             ofn = 'newsheetMerge.csv'
             writeOut(updatedApps, ofn)
 
         #
-        #  Assign cmte members to a collection
+        #  Assign cmte members to apps in a collection
         #
         if selcmd.startswith('Create cmte'):
-            oldapps = readDownload(sys.argv[1])
-            oldapps.assignRevs()
+            appCollect = readDownload(sys.argv[1])
+            appCollect.assignRevs()
             ofn='CmteRevAssign.csv'
-            writeCmteAssign(oldapps, ofn)
+            writeCmteAssign(appCollect, ofn)
+
+        #
+        #  Generate new cmte member assignments as new apps come in
+        #
+        if selcmd.startswith('Create new cmte scores'):
+            # generate collections for new download (newapps) and existing processed data (oldapps)
+            newfn = sys.argv[1]
+            newapps = readDownload(newfn)
+            oldfn = input('Enter Cmte Assignments csv: ').strip()
+            oldapps= readCmteAssgmtsFile(oldfn)
+            newApps = selectNewAppstoAssign(newapps, oldapps)  # returns only a list
+            NewAppsToAssign = collection(oldapps.header)
+            NewAppsToAssign.list = newApps
+            NewAppsToAssign.assignRevs()
+            ofn = 'CmteRevUpdate.csv'
+            writeOut(NewAppsToAssign, ofn)
 
         #
         # Set Sorting Option Flag
