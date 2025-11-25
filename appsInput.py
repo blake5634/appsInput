@@ -17,8 +17,12 @@ TESTROW = -1  # <0 = no test printout
 SORTING = True  # can be changed in user menu
 
 # define col headers of our working files
-outputCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRC', 'Id','Link', 'Last date', 'Which area','Highest degree school']
+workingFileCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRC', 'Id','Link', 'Last date', 'Which area','Highest degree school']
 
+
+assignFileCols = ['Firstname', 'Lastname', 'Id', 'rev 1', 'rev 2', 'Wscore', 'Link', 'Last date', 'Area', 'Highest degree school']
+
+headerTypeDict = {'Assignments':assignFileCols, 'WorkingFile':workingFileCols}
 
 #
 #   Begin code
@@ -45,12 +49,11 @@ def help():
         ''')
 
 class collection:
-    def __init__(self, headerCols, coltype):
-        if coltype not in ['Assignments', 'WorkingFile','Downloads']:
-            error('collection created with invalid type: ', coltype)
-        self.colType = coltype
+    #
+    #  collection is the same for all types but its use dictates the header names (via coltype)
+    #
+    def __init__(self, ):
         self.list = []
-        self.header = headerCols
         self.len = 0
 
     def add(self,app):
@@ -77,16 +80,6 @@ class collection:
                 app.crev01 = combos[p1][0]
                 app.crev02 = combos[p1][1]
                 print(f'{app.iD:10} {app.crev01} {app.crev02}')
-        heads = self.header
-        if self.colType=='Working':
-            heads.remove('Research')
-            heads.remove('Teaching')
-            heads.remove('WIRC')
-            self.colType = 'Assignments'
-        heads.insert(3,'rev 1')
-        heads.insert(4,'rev 2')
-        heads.insert(5,'Wscore')
-        self.header = heads
 
 class applicant:
     def __init__(self,fn,ln,iD,aD,ar,ins,scores=None):
@@ -109,7 +102,9 @@ class applicant:
         self.area = ar
         self.ins = ins
         self.crev01 = None
+        self.crScore01 = None
         self.crev02 = None
+        self.crScore02 = None
 
 
     def __repr__(self):
@@ -165,7 +160,7 @@ def readCmteAssgmtsFile(inFileName):
     #         print('               outputCols: ', outputCols)
     #         error('readWorking: input header mismatch')
 
-    existApps = collection(inputHeaderRow, 'Assignments')  # make a header just like the Assignments file
+    existApps = collection()  # make a header just like the Assignments file
 
     #  cmte assignments header:
     # Firstname, Lastname, Id, rev 1,rev 2, Wscore, Link, Last date, Which area, Highest degree school
@@ -182,6 +177,7 @@ def readCmteAssgmtsFile(inFileName):
         ar  = r[8]
         ins = r[9]
         tmp = applicant(fn,ln,idn,ad,ar,ins )
+        tmp.assignReviewers(rev1,rev2)
         existApps.add(tmp)
     return existApps
 
@@ -203,7 +199,8 @@ def readWorkingFile(inFileName):
             print('               outputCols: ', outputCols)
             error('readWorking: input header mismatch')
 
-    existApps = collection(outputCols,'WorkingFile')
+    # create collection for the working file apps.
+    existApps = collection(headerTypeDict['Working'])
     for r in data:
         fn  = r[0]
         ln  = r[1]
@@ -234,7 +231,6 @@ def readDownload(inFileName):
     inputHeaderRow = next(data)
 
     print('Input Header: ', inputHeaderRow)
-    print('Output Header: ',outputCols)
 
     # print('Selected Output Columns: ',selectedCols)
 
@@ -244,9 +240,9 @@ def readDownload(inFileName):
             if ht.startswith(selHdrCol):
                 oldcols.append(i)
 
-    print('oldcols: ',oldcols)
+    print('Columns selected from download: ',oldcols)
 
-    applicants = collection(outputCols,'WorkingFile')
+    applicants = collection()
 
     j = 0
     for row in data:
@@ -295,11 +291,20 @@ def sortApps(applicants):
     applicants.list =  sorted(applicants.list, key=lambda app: (dt.datetime.strptime(app.appDate.strip(), '%m/%d/%Y'), app.iD)).copy()
     return applicants
 
-def writeOut(applicants, ofn):
+def writeOut(applicants, header, ofn):
     #
     #  Save new output file (sorted date, then by ID)
     #
     # ofn = 'newsheet.csv'
+
+    hk = headerTypeDict.keys()
+    correctHeader = False
+    for k in hk:
+        if header==headerTypeDict[k]:
+            correctHeader=True
+    if not correctHeader:
+        error('Unknown header for output file: ', header)
+
     if SORTING:
         applicants = sortApps(applicants)
 
@@ -307,13 +312,14 @@ def writeOut(applicants, ofn):
     writer = csv.writer(of)
 
     #write out the header row
-    writer.writerow(applicants.header)
+    writer.writerow(header)
     for a in applicants.list:
         row = a.genSSRow()
         writer.writerow(row)
+
     of.close()
 
-    print(f'Output Saved: {ofn}')
+    print(f'Output Saved: {ofn} (n={len(applicants)})')
 
 
 def writeCmteAssign(applicants, ofn):
@@ -383,8 +389,8 @@ if __name__ == '__main__':
     #  set up and run the menu
     #
 
-    mitems = ['Read, and Convert Download .csv',
-              'Read, convert, and MERGE download .csv',
+    mitems = [
+              'Read and convert latest download working.csv',
               'Create cmte scores',
               'Create new cmte scores from Download',
               'Set sorting on output save',
@@ -392,27 +398,21 @@ if __name__ == '__main__':
               'Quit']
 
     mdata = {'labels':mitems, 'state':{'sorting':SORTING}}
+
+
     while True:
         j, selcmd = menu(mdata)
 
-        # read in a download csv and produce a shareable sheet
-        if selcmd.startswith('Read, and Convert Down'):
-            ofn = 'newsheet.csv'
-            applicants = readDownload(sys.argv[1])
-            writeOut(applicants, ofn)
-
-        # read in a download csv and merge it with an existing shareable sheet
-        if selcmd.startswith('Read, convert, and MERGE'):
+        #
+        # read in a download csv, convert it to shareable sheet
+        #
+        if selcmd.startswith('Read and convert latest download'):
             # generate collections for new download (newapps) and existing processed data (oldapps)
             newfn = sys.argv[1]
-            newapps = readDownload(newfn)
-            oldfn = input('Enter existing working csv: ')
-            oldapps= readWorkingFile(oldfn.strip())
-            updatedAppsList = mergeCollections(newapps, oldapps)  # returns only list
-            updatedApps = collection(oldapps.header,'WorkingFile')
-            updatedApps.list = updatedAppsList
-            ofn = 'newsheetMerge.csv'
-            writeOut(updatedApps, ofn)
+            latestDownload = readDownload(newfn)
+            datestr = dt.datetime.today().strftime("%d-%b-%y")
+            ofn = f'newsheet-{datestr}.csv'
+            writeOut(latestDownload, headerTypeDict['WorkingFile'], ofn)
 
         #
         #  Assign cmte members to apps in a collection
@@ -433,11 +433,11 @@ if __name__ == '__main__':
             oldfn = input('Enter Cmte Assignments csv: ').strip()
             oldapps= readCmteAssgmtsFile(oldfn)
             newApps = selectNewAppstoAssign(newapps, oldapps)  # returns only a list
-            NewAppsToAssign = collection(oldapps.header)
+            NewAppsToAssign = collection()
             NewAppsToAssign.list = newApps
             NewAppsToAssign.assignRevs()
             ofn = 'CmteRevUpdate.csv'
-            writeOut(NewAppsToAssign, ofn)
+            writeOut(NewAppsToAssign, headerTypeDict['Assignments'], ofn)
 
         #
         # Set Sorting Option Flag
