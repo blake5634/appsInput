@@ -2,6 +2,7 @@ import csv
 import sys
 import datetime as dt
 from itertools import combinations
+import numpy as np
 
 def error(msg):
     print(f'Error: {msg}')
@@ -68,7 +69,7 @@ class collection:
         # print(revlist)
         # print(combos)
         cycle = 3
-        p1 = 0
+        p1 = np.random.randint(len(combos))  # start at random combo
         j = 0
         for app in self.list:
             if (app.crev01 is None) and (app.crev02 is None):
