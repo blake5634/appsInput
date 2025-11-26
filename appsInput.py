@@ -81,6 +81,15 @@ class collection:
                 app.crev02 = combos[p1][1]
                 print(f'{app.iD:10} {app.crev01} {app.crev02}')
 
+    #
+    #  special corrections, exceptions, etc.
+    #
+    def processExceptionsAndHacks(self):
+        for app in self.list:
+            if app.iD=='6324197': # special end date correction for Charlotte DeVol
+                app.appDate = '11/13/2025'
+        return
+
 class applicant:
     def __init__(self,fn,ln,iD,aD,ar,ins,scores=None):
         self.fName = fn
@@ -410,6 +419,9 @@ if __name__ == '__main__':
             # generate collections for new download (newapps) and existing processed data (oldapps)
             newfn = sys.argv[1]
             latestDownload = readDownload(newfn)
+
+            latestDownload.processExceptionsAndHacks()
+
             datestr = dt.datetime.today().strftime("%d-%b-%y")
             ofn = f'newsheet-{datestr}.csv'
             writeOut(latestDownload, headerTypeDict['WorkingFile'], ofn)
