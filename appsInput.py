@@ -54,16 +54,14 @@ class collection:
     #
     def __init__(self, ):
         self.list = []
-        self.len = 0
 
     def add(self,app):
         self.list.append(app)
-        self.len+=1
 
     def __len__(self):
         return len(self.list)
 
-    def assignRevs(self):
+    def assignReviewers(self):
         revlist = ['Blake', 'Amy', 'Baosen', 'Sajjad']
         nrevs = len(revlist)
         combos = list(combinations(revlist,2))
@@ -87,8 +85,12 @@ class collection:
     def processExceptionsAndHacks(self):
         for app in self.list:
             if app.iD=='6324197': # special end date correction for Charlotte DeVol
+                # this candidate applied to wrong position due to our fault.
                 app.appDate = '11/13/2025'
         return
+
+
+
 
 class applicant:
     def __init__(self,fn,ln,iD,aD,ar,ins,scores=None):
@@ -126,10 +128,14 @@ class applicant:
         # t += f'{self.createDate.strftime('%Y-%m-%d'):15}'
         return t
 
-    def genSSRow(self,shType='faculty'):
+    def genSSRow(self,shType='WorkingFile'):
     # # desired output cols, in order
     # f = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRK', 'Id','Link', 'Last date', 'Which area']
-        if shType=='faculty':
+        try:
+            headerTypeDict[shType]
+        except:
+            error('genSSRow: invalid header type param:',shType)
+        if shType=='WorkingFile':
             s1 = self.teaching
             s2 = self.research
             s3 = self.wirc
@@ -142,7 +148,7 @@ class applicant:
                 s3 = ''
             r = [self.fName, self.lName,  s1, s2, s3, self.iD, self.url, self.appDate,self.area, self.ins]
             return r
-        elif shType=='committee':
+        elif shType=='Assignments':
             r = [self.fName, self.lName,  self.iD, self.crev01, self.crev02,'', self.url, self.appDate,self.area, self.ins]
             return r
         else:
@@ -186,7 +192,8 @@ def readCmteAssgmtsFile(inFileName):
         ar  = r[8]
         ins = r[9]
         tmp = applicant(fn,ln,idn,ad,ar,ins )
-        tmp.assignReviewers(rev1,rev2)
+        tmp.crev01 = rev1
+        tmp.crev02 = rev2
         existApps.add(tmp)
     return existApps
 
@@ -255,12 +262,12 @@ def readDownload(inFileName):
 
     j = 0
     for row in data:
-        fn = row[oldcols[0]]  # oldcols is in 'selectedCols' order
-        ln = row[oldcols[1]]
-        iD = row[oldcols[2]]
+        fn = row[oldcols[0]].strip()  # oldcols is in 'selectedCols' order
+        ln = row[oldcols[1]].strip()
+        iD = row[oldcols[2]].strip()
         date = row[oldcols[3]][0:10]
-        ar = row[oldcols[4]]
-        ins = row[oldcols[5]]  # highest degree school
+        ar = row[oldcols[4]].strip()
+        ins = row[oldcols[5]].strip()  # highest degree school
         tmp = applicant(fn,ln,iD,date,ar,ins)
         applicants.add(tmp)
         if j==TESTROW:
@@ -277,6 +284,8 @@ def readDownload(inFileName):
 
     f.close()
 
+    applicants.processExceptionsAndHacks()
+
     if TESTROW >= 0:
         print(applicants.apps[TESTROW])
         print('')
@@ -284,15 +293,24 @@ def readDownload(inFileName):
 
     return applicants
 
+#
+#   identify new applicants out of a newer download
 def selectNewAppstoAssign(appsNew, appsOld):
-    seen = {app.iD for app in appsOld.list}
-    return [app for app in appsNew.list if app.iD not in seen]
+    tmp = collection()
+    seen = [app.iD for app in appsOld.list]
+    tmp.list = [app for app in appsNew.list if app.iD not in seen]
+    return tmp
 
 
 def mergeCollections(apps1, apps2):
     """Merge two lists of applicant objects, removing duplicates by iD. (thanks Claude)"""
-    seen = {app.iD for app in apps1.list}
+    seen = [app.iD for app in apps1.list]
     return apps1.list + [app for app in apps2.list if app.iD not in seen]
+
+def concatenateCollections(apps1,apps2):
+    new = collection()
+    new.list = apps1.list + apps2.list
+    return new
 
 def sortApps(applicants):
     print('Sorting (got here)')
@@ -300,19 +318,17 @@ def sortApps(applicants):
     applicants.list =  sorted(applicants.list, key=lambda app: (dt.datetime.strptime(app.appDate.strip(), '%m/%d/%Y'), app.iD)).copy()
     return applicants
 
-def writeOut(applicants, header, ofn):
+def writeOut(applicants, headerType, ofn):
     #
     #  Save new output file (sorted date, then by ID)
     #
     # ofn = 'newsheet.csv'
 
-    hk = headerTypeDict.keys()
-    correctHeader = False
-    for k in hk:
-        if header==headerTypeDict[k]:
-            correctHeader=True
-    if not correctHeader:
-        error('Unknown header for output file: ', header)
+    #validate headerType param
+    try:
+        header = headerTypeDict[headerType]
+    except:
+        error('Unknown header type for output file: ', headerType)
 
     if SORTING:
         applicants = sortApps(applicants)
@@ -323,32 +339,32 @@ def writeOut(applicants, header, ofn):
     #write out the header row
     writer.writerow(header)
     for a in applicants.list:
-        row = a.genSSRow()
+        row = a.genSSRow(shType=headerType)
         writer.writerow(row)
 
     of.close()
 
-    print(f'Output Saved: {ofn} (n={len(applicants)})')
+    print(f'{headerType} Output Saved: {ofn} (n={len(applicants)})')
 
-
-def writeCmteAssign(applicants, ofn):
-    #
-    #  Save new output file (sorted date, then by ID)
-    #
-    if SORTING:
-        applicants = sortApps(applicants)
-
-    of = open(ofn, 'w')
-    writer = csv.writer(of)
-
-    #write out the header row
-    writer.writerow(applicants.header)
-    for a in applicants.list:
-        row = a.genSSRow(shType='committee')  # add reviewer fields
-        writer.writerow(row)
-    of.close()
-
-    print(f'Committee Assignments Output Saved: {ofn}')
+#
+# def writeCmteAssign(applicants, ofn):
+#     #
+#     #  Save new output file (sorted date, then by ID)
+#     #
+#     if SORTING:
+#         applicants = sortApps(applicants)
+#
+#     of = open(ofn, 'w')
+#     writer = csv.writer(of)
+#
+#     #write out the header row
+#     writer.writerow(applicants.header)
+#     for a in applicants.list:
+#         row = a.genSSRow(shType='committee')  # add reviewer fields
+#         writer.writerow(row)
+#     of.close()
+#
+#     print(f'Committee Assignments Output Saved: {ofn}')
 
 def menu(mdat):
     try:
@@ -399,9 +415,9 @@ if __name__ == '__main__':
     #
 
     mitems = [
-              'Read and convert latest download working.csv',
-              'Create cmte scores',
-              'Create new cmte scores from Download',
+              'Read and convert latest download to Working.csv',
+              'Create cmte Assignments',
+              'Update the committee assignments',
               'Set sorting on output save',
               'Clear sorting on output save',
               'Quit']
@@ -420,36 +436,39 @@ if __name__ == '__main__':
             newfn = sys.argv[1]
             latestDownload = readDownload(newfn)
 
-            latestDownload.processExceptionsAndHacks()
-
             datestr = dt.datetime.today().strftime("%d-%b-%y")
             ofn = f'newsheet-{datestr}.csv'
-            writeOut(latestDownload, headerTypeDict['WorkingFile'], ofn)
+            writeOut(latestDownload, 'WorkingFile', ofn)
 
         #
         #  Assign cmte members to apps in a collection
         #
         if selcmd.startswith('Create cmte'):
             appCollect = readDownload(sys.argv[1])
-            appCollect.assignRevs()
+            appCollect.assignReviewers()
             ofn='CmteRevAssign.csv'
-            writeCmteAssign(appCollect, ofn)
+            writeOut(appCollect, 'AssignmentsXXX', ofn)
 
         #
         #  Generate new cmte member assignments as new apps come in
         #
-        if selcmd.startswith('Create new cmte scores'):
-            # generate collections for new download (newapps) and existing processed data (oldapps)
+        if selcmd.startswith('Update the committee assignments'):
+
+            # generate collection for new download (newapps)
             newfn = sys.argv[1]
-            newapps = readDownload(newfn)
-            oldfn = input('Enter Cmte Assignments csv: ').strip()
-            oldapps= readCmteAssgmtsFile(oldfn)
-            newApps = selectNewAppstoAssign(newapps, oldapps)  # returns only a list
-            NewAppsToAssign = collection()
-            NewAppsToAssign.list = newApps
-            NewAppsToAssign.assignRevs()
-            ofn = 'CmteRevUpdate.csv'
-            writeOut(NewAppsToAssign, headerTypeDict['Assignments'], ofn)
+            newappsDL = readDownload(newfn)
+            currAppAssignmentsFn = input('Enter Cmte Assignments csv: ').strip()
+            oldAppAssignments = readCmteAssgmtsFile(currAppAssignmentsFn)
+            truelyNewApps = selectNewAppstoAssign(newappsDL, oldAppAssignments)
+            # print(f'debug: old:{len(oldAppAssignments)} new:{len(newappsDL)}  truenew:{len(truelyNewApps)}')
+            # quit()
+            truelyNewApps.assignReviewers()
+
+            # append the new assignments onto the old assignments
+            latestAssignments = concatenateCollections(oldAppAssignments,truelyNewApps)
+            datestr = dt.datetime.today().strftime("%d-%b-%y")
+            ofn = f'CmteRevUpdate-{datestr}.csv'
+            writeOut(latestAssignments, 'Assignments', ofn)
 
         #
         # Set Sorting Option Flag
