@@ -16,6 +16,7 @@ def error(msg):
 ifURL = 'https://facultysearch.interfolio.com/28343/positions/171499'
 TESTROW = -1  # <0 = no test printout
 SORTING = True  # can be changed in user menu
+SCORES_FNAME = 'fac_scores.txt'
 
 # define col headers of our working files
 workingFileCols = ['Firstname', 'Lastname', 'Teaching', 'Research', 'WIRC', 'Id','Link', 'Last date', 'Which area','Highest degree school']
@@ -117,6 +118,53 @@ class applicant:
         self.crScore01 = None
         self.crev02 = None
         self.crScore02 = None
+        # faculty scores will be e.g.
+        #     (name, ResearchScore, TeachingScore, WIRCScore)
+        #     [('hannaford', 3.5, 2.5, 4), ('Orsborn', 2.0, 1, 1,5), ... ]
+        self.facScores = []
+
+    def addFacScore(name, rsrch, tch, wirc):
+        for score in [rsrch,tch,wirc]:
+            SCORES = False
+            if type(score) != type(3.5) or type(score) != type(3):
+                error('faculty score must be a float or int')
+            else:
+                if score is not None:
+                    SCORES = True   # I have seen at least one score
+            if not SCORES:
+                error('faculty scores are blank for ', name)
+        self.facScores.append(name, rsrch, tch, wirc)
+
+
+    def getAvgFacScores():
+        if len(self.facScores) == 0:
+            return 0
+        n=0
+        sum=0
+        for rec in self.facScores:
+            for s in rec[1:]:
+                if s is not None:
+                    sum += s
+                    n += 1
+
+
+    def wirc_avg(self):
+        n=0
+        sum = 0
+        if self.crScore01 is not None:
+            n += 1
+            sum += self.crScore01
+        if self.crScore02 is not None:
+            n += 1
+            sum += self.crScore02
+        if n==0:
+            return None
+        else:
+            return sum/n
+
+
+        if self.crScore is None:
+            n=1
 
 
     def __repr__(self):
@@ -155,13 +203,14 @@ class applicant:
         else:
             error('Unknown SSRow type: ', shType)
 
+
 def readCmteAssgmtsFile(inFileName):
     #
     #  read in a committee review assignments file
     #
     # check the input file
     if 'Ass' not in inFileName:
-        error('readWorkingFile: filename does not contain "Ass": {inFileName}')
+        error('readCmteAssgmtsFile: filename does not contain "Ass": {inFileName}')
 
     f = open(inFileName, 'r',encoding='utf-8-sig')
 
@@ -367,6 +416,31 @@ def writeOut(applicants, headerType, ofn):
 #
 #     print(f'Committee Assignments Output Saved: {ofn}')
 
+def writeFacScores(coll):
+    sfn = SCORES_FNAME
+    sfp = open(sfn,'w')
+    for app in coll.list:
+        for (name, res,tch,wirc) in app.facScores:
+            row = f'{app.iD} | {name} | {res} | {tch} | {wirc}'
+            print(row,file=sfp,end='\n')
+    sfp.close()
+
+
+def readFacScores(coll):
+    sfn = SCORES_FNAME
+    sfp = open(sfn,'r')
+    for row in sfp:
+        (scId, name, res,tch,wirc) = row.split('|')
+        #
+        ##   find the app by id
+        #          and update the applicant
+        for app in coll:
+            if scId == app.iD:
+                app.facScores.append((name, res, tch, wirc))
+    return coll
+    sfp.close()
+
+
 def menu(mdat):
     try:
         x = mdat['labels']
@@ -398,8 +472,71 @@ def menu(mdat):
         error(f'unusable response: {resp}')
     return j, mdat['labels'][j]
 
+
+################################################################################3
+#
+#  Testing
 #
 #
+def run_tests():
+    tmitems = ['Test Write Fac scores','Test Read Fac scores', 'Return']
+
+    tmdata = {'labels':tmitems, 'state':{'sorting':SORTING}}
+
+    while True:
+        j, selcmd = menu(tmdata)
+        if selcmd.startswith('Test Write Fac'):
+            tcol = collection()
+
+            #def __init__(self,fn,ln,iD,aD,ar,ins,scores=None):
+            app1 = applicant('Robert', 'Wagner',  '0001', '2/10/2022','English Lit', 'Harvard')
+            app2 = applicant('Alice', 'Eckhart',  '0002', '3/01/2022','Shakespeare', 'UCLA')
+            app3 = applicant('James', 'Chan',     '0003', '2/15/2022','Humor', 'Purdue')
+            app4 = applicant('Julie', 'Johnson',  '0004', '2/22/2022','Detective Fic.', 'Michigan')
+            tcol.add(app1)
+            tcol.add(app2)
+            tcol.add(app3)
+            tcol.add(app4)
+
+            # a list just for testing.
+            testfacscores = [
+                ('0001', 'Prof Hobbs', 3.5, 2, 3),
+                ('0001','Huang', 2,   2, 2),
+                ('0003', 'Scott', 3, 3, 2.5),
+                ('0001', 'Scott', 2, 4, 3),
+                ('0002', 'Kalman', 2.5, 3.5, 1.5),
+                ('0003', 'Kalman', 4.4, 4, 5),
+                ('0002', 'Steinmetz', 3.5, 3.5, 3.5)
+                ]
+
+            for ts in testfacscores:
+                for app in tcol.list:
+                    # print(f'{ts[0]} =?= {app.iD}')
+                    if ts[0]==app.iD:
+                        # print('got here: {app.iD}')
+                        app.facScores.append(ts[1:])
+
+            writeFacScores(tcol)
+
+            print(f'Faculty scores file written to {SCORES_FNAME}.   Data should be: ')
+            for x in testfacscores:
+                print(x)
+            quit()
+
+        if selcmd.startswith('Test Read Fac'):
+            tfp = open(SCORES_FNAME, 'r')
+            for line in tfp:
+                sc = [s.strip() for s in line.split('|')]
+                print(sc)
+            quit()
+
+        if selcmd.startswith('Return'):
+            return
+
+
+#####################################################################
+#
+#   Main
 #
 if __name__ == '__main__':
 
@@ -417,10 +554,12 @@ if __name__ == '__main__':
 
     mitems = [
               'Read and convert latest download to Working.csv',
-              'Create cmte Assignments',
               'Update the committee assignments',
               'Set sorting on output save',
               'Clear sorting on output save',
+              'Read Fac Scores',
+              'Write Fac Scores',
+              'Test Menu',
               'Quit']
 
     mdata = {'labels':mitems, 'state':{'sorting':SORTING}}
@@ -441,14 +580,14 @@ if __name__ == '__main__':
             ofn = f'newsheet-{datestr}.csv'
             writeOut(latestDownload, 'WorkingFile', ofn)
 
-        #
-        #  Assign cmte members to apps in a collection
-        #
-        if selcmd.startswith('Create cmte'):
-            appCollect = readDownload(sys.argv[1])
-            appCollect.assignReviewers()
-            ofn='CmteRevAssign.csv'
-            writeOut(appCollect, 'AssignmentsXXX', ofn)
+        # #
+        # #  Assign cmte members to apps in a collection
+        # #
+        # if selcmd.startswith('Create cmte'):
+        #     appCollect = readDownload(sys.argv[1])
+        #     appCollect.assignReviewers()
+        #     ofn='CmteRevAssign.csv'
+        #     writeOut(appCollect, 'AssignmentsXXX', ofn)
 
         #
         #  Generate new cmte member assignments as new apps come in
@@ -472,6 +611,18 @@ if __name__ == '__main__':
             writeOut(latestAssignments, 'Assignments', ofn)
 
         #
+        #  Fac scores
+        #
+
+        # read in the fac score file.
+        if selcmd.startswith('Read Fac'):
+            newfn = sys.argv[1]  # read in the working applicants file
+            currentCol = readWorkingFile(newfn)
+            # read in the faculty scores of the apps and merge them into the applicants collection
+            currentCol = readFacScores(currentCol)
+
+
+        #
         # Set Sorting Option Flag
         #
         if selcmd.startswith('Set'):
@@ -482,6 +633,14 @@ if __name__ == '__main__':
             SORTING = False
             print('\nSorting is DISABLED')
             mdata['stat']['sorting']=False
+
+
+        #
+        #  Testing menu
+        #
+        if selcmd.startswith('Test'):
+            run_tests()
+
 
         if selcmd.upper().startswith('Q'):
             quit()
