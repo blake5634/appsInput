@@ -54,14 +54,14 @@ class collection:
     #
     #  collection is the same for all types but its use dictates the header names (via coltype)
     #
-    def __init__(self, ):
-        self.list = []
+    def __init__(self):
+        self.app_list = []
 
     def add(self,app):
-        self.list.append(app)
+        self.app_list.append(app)
 
     def __len__(self):
-        return len(self.list)
+        return len(self.app_list)
 
     def assignReviewers(self):
         revlist = ['Blake', 'Amy', 'Baosen', 'Sajjad']
@@ -72,7 +72,7 @@ class collection:
         cycle = 3
         p1 = np.random.randint(len(combos))  # start at random combo
         j = 0
-        for app in self.list:
+        for app in self.app_list:
             if (app.crev01 is None) and (app.crev02 is None):
                 if j%cycle==0:
                     p1 = (p1+1)%len(combos)
@@ -85,7 +85,7 @@ class collection:
     #  special corrections, exceptions, etc.
     #
     def processExceptionsAndHacks(self):
-        for app in self.list:
+        for app in self.app_list:
             if app.iD=='6324197': # special end date correction for Charlotte DeVol
                 # this candidate applied to wrong position due to our fault.
                 app.appDate = '11/13/2025'
@@ -219,12 +219,6 @@ def readCmteAssgmtsFile(inFileName):
     # read the input header
     inputHeaderRow = next(data)
 
-    # for i,c in enumerate(inputHeaderRow):
-    #     if (c != outputCols[i]):
-    #         print('input Working file header: ', inputHeaderRow)
-    #         print('               outputCols: ', outputCols)
-    #         error('readWorking: input header mismatch')
-
     existApps = collection()  # make a header just like the Assignments file
 
     #  cmte assignments header:
@@ -250,6 +244,8 @@ def readCmteAssgmtsFile(inFileName):
 
 def readWorkingFile(inFileName):
 
+    if not inFileName.startswith('Working'):
+        error('Read Faculty Scores: Command Line arg must be a Working file.')
     #
     #  read in a working file
     #
@@ -259,14 +255,16 @@ def readWorkingFile(inFileName):
 
     # read the input header
     inputHeaderRow = next(data)
-    for i,c in enumerate(inputHeaderRow):
-        if (c != outputCols[i]):
-            print('input Working file header: ', inputHeaderRow)
-            print('               outputCols: ', outputCols)
-            error('readWorking: input header mismatch')
+    outputCols = headerTypeDict['WorkingFile']
+    #
+    # for i,c in enumerate(inputHeaderRow):
+    #     if (c != outputCols[i]):
+    #         print('input Working file header: ', inputHeaderRow)
+    #         print('               outputCols: ', outputCols)
+    #         error('readWorking: input header mismatch')
 
     # create collection for the working file apps.
-    existApps = collection(headerTypeDict['Working'])
+    existApps = collection()
     for r in data:
         fn  = r[0]
         ln  = r[1]
@@ -345,34 +343,34 @@ def readDownload(inFileName):
 
 #
 #   identify new applicants out of a newer download
-def selectNewAppstoAssign(appsNew, appsOld):
+def selectNewApps(appsNew, appsOld):
     tmp = collection()
-    seen = [app.iD for app in appsOld.list]
-    tmp.list = [app for app in appsNew.list if app.iD not in seen]
+    seen = [app.iD for app in appsOld.app_list]
+    tmp.app_list = [app for app in appsNew.app_list if app.iD not in seen]
     return tmp
 
 
 def mergeCollections(apps1, apps2):
     """Merge two lists of applicant objects, removing duplicates by iD. (thanks Claude)"""
-    seen = [app.iD for app in apps1.list]
-    return apps1.list + [app for app in apps2.list if app.iD not in seen]
+    seen = [app.iD for app in apps1.app_list]
+    return apps1.app_list + [app for app in apps2.app_list if app.iD not in seen]
 
 def concatenateCollections(apps1,apps2):
     new = collection()
-    new.list = apps1.list + apps2.list
+    new.app_list = apps1.app_list + apps2.app_list
     return new
 
 def sortApps(applicants):
     print('Sorting (got here)')
     """Sort applicants by date, then by iD."""
-    applicants.list =  sorted(applicants.list, key=lambda app: (dt.datetime.strptime(app.appDate.strip(), '%m/%d/%Y'), app.iD)).copy()
+    applicants.app_list =  sorted(applicants.app_list, key=lambda app: (dt.datetime.strptime(app.appDate.strip(), '%m/%d/%Y'), app.iD)).copy()
     return applicants
 
 def writeOut(applicants, headerType, ofn):
     #
     #  Save new output file (sorted date, then by ID)
     #
-    # ofn = 'newsheet.csv'
+    # ofn = 'Working_.csv'
 
     #validate headerType param
     try:
@@ -388,7 +386,7 @@ def writeOut(applicants, headerType, ofn):
 
     #write out the header row
     writer.writerow(header)
-    for a in applicants.list:
+    for a in applicants.app_list:
         row = a.genSSRow(shType=headerType)
         writer.writerow(row)
 
@@ -409,7 +407,7 @@ def writeOut(applicants, headerType, ofn):
 #
 #     #write out the header row
 #     writer.writerow(applicants.header)
-#     for a in applicants.list:
+#     for a in applicants.app_list:
 #         row = a.genSSRow(shType='committee')  # add reviewer fields
 #         writer.writerow(row)
 #     of.close()
@@ -419,7 +417,7 @@ def writeOut(applicants, headerType, ofn):
 def writeFacScores(coll):
     sfn = SCORES_FNAME
     sfp = open(sfn,'w')
-    for app in coll.list:
+    for app in coll.app_list:
         for (name, res,tch,wirc) in app.facScores:
             row = f'{app.iD} | {name} | {res} | {tch} | {wirc}'
             print(row,file=sfp,end='\n')
@@ -431,14 +429,18 @@ def readFacScores(coll):
     sfp = open(sfn,'r')
     for row in sfp:
         (scId, name, res,tch,wirc) = row.split('|')
+        scId = scId.strip()
         #
         ##   find the app by id
         #          and update the applicant
-        for app in coll:
+        for app in coll.app_list:
+            # print(f'checking: {scId} {app.iD}')
             if scId == app.iD:
+                print(f'match {scId}',name, res, tch, wirc)
+                # x = input('continue...')
                 app.facScores.append((name, res, tch, wirc))
-    return coll
     sfp.close()
+    return coll
 
 
 def menu(mdat):
@@ -448,7 +450,7 @@ def menu(mdat):
         # x = mdat['style']
         nitems = len(mdat['labels'])
     except:
-        error('Bad menu inputs:', mdat)
+        error('Bad menu setup inputs:', mdat)
     i = 1
     # print menu header
     #
@@ -465,6 +467,8 @@ def menu(mdat):
     resp = input('Select: ')
     if resp == '':
         quit()
+    if resp.lower().startswith('he'):
+        help()
     try:
         j = int(resp)-1
         assert int(j) < nitems
@@ -510,7 +514,7 @@ def run_tests():
                 ]
 
             for ts in testfacscores:
-                for app in tcol.list:
+                for app in tcol.app_list:
                     # print(f'{ts[0]} =?= {app.iD}')
                     if ts[0]==app.iD:
                         # print('got here: {app.iD}')
@@ -554,11 +558,12 @@ if __name__ == '__main__':
 
     mitems = [
               'Read and convert latest download to Working.csv',
+              'Update Faculty working file with latest download preserving order',
               'Update the committee assignments',
               'Set sorting on output save',
               'Clear sorting on output save',
               'Read Fac Scores',
-              'Write Fac Scores',
+              'Disp. Fac Scores',
               'Test Menu',
               'Quit']
 
@@ -571,14 +576,27 @@ if __name__ == '__main__':
         #
         # read in a download csv, convert it to shareable sheet
         #
-        if selcmd.startswith('Read and convert latest download'):
+        if selcmd.startswith('Read and convert latest download with new sort order'):
             # generate collections for new download (newapps) and existing processed data (oldapps)
             newfn = sys.argv[1]
             latestDownload = readDownload(newfn)
 
             datestr = dt.datetime.today().strftime("%d-%b-%y")
-            ofn = f'newsheet-{datestr}.csv'
+            ofn = f'Working_-{datestr}.csv'
             writeOut(latestDownload, 'WorkingFile', ofn)
+
+
+        if selcmd.startswith('Update Faculty work'):
+            newfn = sys.argv[1]
+            latestDownload = readDownload(newfn)
+            oldWorkingfn = input('Enter current faculty working csv file: ')
+            oldWorkingApps = readWorkingFile(oldWorkingfn)
+            truelyNewApps = selectNewApps(latestDownload, oldWorkingApps)
+            updatedWorking = concatenateCollections(oldWorkingApps,truelyNewApps)
+            datestr = dt.datetime.today().strftime("%d-%b-%y")
+            ofn = f'Working_-{datestr}.csv'
+            writeOut(updatedWorking, 'WorkingFile', ofn)
+
 
         # #
         # #  Assign cmte members to apps in a collection
@@ -599,7 +617,7 @@ if __name__ == '__main__':
             newappsDL = readDownload(newfn)
             currAppAssignmentsFn = input('Enter Cmte Assignments csv: ').strip()
             oldAppAssignments = readCmteAssgmtsFile(currAppAssignmentsFn)
-            truelyNewApps = selectNewAppstoAssign(newappsDL, oldAppAssignments)
+            truelyNewApps = selectNewApps(newappsDL, oldAppAssignments)
             # print(f'debug: old:{len(oldAppAssignments)} new:{len(newappsDL)}  truenew:{len(truelyNewApps)}')
             # quit()
             truelyNewApps.assignReviewers()
@@ -621,6 +639,45 @@ if __name__ == '__main__':
             # read in the faculty scores of the apps and merge them into the applicants collection
             currentCol = readFacScores(currentCol)
 
+
+        #
+        #  Fac scores
+        #
+        def cleanScore(sc):
+            ret = []
+            for x in sc:
+                ret.append(x.strip())
+            return ret
+
+
+        # read in the fac score file.
+        if selcmd.startswith('Disp. Fac'):
+            csvlines = []
+            report = ''
+            try:
+                x=len(currentCol)
+            except:
+                error('Display Fac. Score: Read in scores or collection first')
+            for app in currentCol.app_list:
+                if len(app.facScores) > 0:
+                    report += f'{app.iD} - {app.fName} {app.lName}\n'
+                    for fs in app.facScores:
+                        (reviewer, rsch, tch, wirc) = cleanScore(fs)
+                        report += '    ' + str(fs)+'\n'
+                        csvline = f'{app.iD}; {app.fName+' '+app.lName}; '
+                        csvline += f'{reviewer}; {rsch}; {tch}; {wirc}'
+                        csvlines.append(csvline)
+                    report += '\n'
+            if len(report)<1:
+                report = 'No scores found.'
+            print(report)
+            datestr = dt.datetime.today().strftime("%d-%b-%y")
+            ofn = f'FacultyScores-{datestr}.csv'
+            ofp = open(ofn,'w')
+            for l in csvlines:
+                print(l, file=ofp)
+            ofp.close()
+            print(f'Output file: {ofn}')
 
         #
         # Set Sorting Option Flag
