@@ -123,20 +123,26 @@ class applicant:
         #     [('hannaford', 3.5, 2.5, 4), ('Orsborn', 2.0, 1, 1,5), ... ]
         self.facScores = []
 
-    def addFacScore(name, rsrch, tch, wirc):
+    def addFacScore(self, name, rsrch, tch, wirc):
+        rsrch = float(rsrch)
+        tch = float(tch)
+        wirc = float(wirc)
         for score in [rsrch,tch,wirc]:
             SCORES = False
-            if type(score) != type(3.5) or type(score) != type(3):
+            if type(score) != type(3.5) and type(score) != type(3):
                 error('faculty score must be a float or int')
             else:
                 if score is not None:
                     SCORES = True   # I have seen at least one score
             if not SCORES:
                 error('faculty scores are blank for ', name)
-        self.facScores.append(name, rsrch, tch, wirc)
+        self.facScores.append((name, rsrch, tch, wirc))
+        if self.iD == '6289273':
+            print (self)
+        return
 
 
-    def getAvgFacScores():
+    def getAvgFacScores(self):
         if len(self.facScores) == 0:
             return 0
         n=0
@@ -173,8 +179,9 @@ class applicant:
         t += f'{name:25}'
         t += f'{self.iD:9} '
         t += f'{self.appDate:15} '
-        t += f'{self.area:20}'
+        t += f'{self.area:20} '
         # t += f'{self.createDate.strftime('%Y-%m-%d'):15}'
+        t += f':{len(self.facScores)} faculty reviews.'
         return t
 
     def genSSRow(self,shType='WorkingFile'):
@@ -393,53 +400,39 @@ def writeOut(applicants, headerType, ofn):
     of.close()
 
     print(f'{headerType} Output Saved: {ofn} (n={len(applicants)})')
-
 #
-# def writeCmteAssign(applicants, ofn):
-#     #
-#     #  Save new output file (sorted date, then by ID)
-#     #
-#     if SORTING:
-#         applicants = sortApps(applicants)
-#
-#     of = open(ofn, 'w')
-#     writer = csv.writer(of)
-#
-#     #write out the header row
-#     writer.writerow(applicants.header)
-#     for a in applicants.app_list:
-#         row = a.genSSRow(shType='committee')  # add reviewer fields
-#         writer.writerow(row)
-#     of.close()
-#
-#     print(f'Committee Assignments Output Saved: {ofn}')
-
-def writeFacScores(coll):
-    sfn = SCORES_FNAME
-    sfp = open(sfn,'w')
-    for app in coll.app_list:
-        for (name, res,tch,wirc) in app.facScores:
-            row = f'{app.iD} | {name} | {res} | {tch} | {wirc}'
-            print(row,file=sfp,end='\n')
-    sfp.close()
+# TODO: modify the test of this one
+# def writeFacScores(coll):
+#     sfn = SCORES_FNAME
+#     sfp = open(sfn,'w')
+#     for app in coll.app_list:
+#         for (name, res,tch,wirc) in app.facScores:
+#             row = f'{app.iD} | {app.area} | {name} | {res} | {tch} | {wirc}'
+#             print(row,file=sfp,end='\n')
+#     sfp.close()
 
 
 def readFacScores(coll):
     sfn = SCORES_FNAME
     sfp = open(sfn,'r')
+    nfac_inputs = 0
     for row in sfp:
-        (scId, name, res,tch,wirc) = row.split('|')
-        scId = scId.strip()
-        #
-        ##   find the app by id
-        #          and update the applicant
-        for app in coll.app_list:
-            # print(f'checking: {scId} {app.iD}')
-            if scId == app.iD:
-                print(f'match {scId}',name, res, tch, wirc)
-                # x = input('continue...')
-                app.facScores.append((name, res, tch, wirc))
+        # try:
+            (scId, name, res,tch,wirc) = row.split('|')
+            scId = scId.strip()
+            #
+            ##   find the app by id
+            #          and update the applicant
+            for app in coll.app_list:
+                # print(f'checking: {scId} {app.iD}')
+                if scId == app.iD:
+                    app.addFacScore(name, res, tch, wirc)
+            nfac_inputs += 1
+        # except:
+        #     print('unreadable Faculty Score row: ',row,', ignored.')
+
     sfp.close()
+    print(f'Read {nfac_inputs} faculty scores.')
     return coll
 
 
@@ -518,7 +511,8 @@ def run_tests():
                     # print(f'{ts[0]} =?= {app.iD}')
                     if ts[0]==app.iD:
                         # print('got here: {app.iD}')
-                        app.facScores.append(ts[1:])
+
+                        app.addFacScore(ts[1],ts[2],ts[3],ts[4])
 
             writeFacScores(tcol)
 
@@ -600,7 +594,7 @@ if __name__ == '__main__':
 
         # #
         # #  Assign cmte members to apps in a collection
-        # #
+        # #         (only needed for the very first download - if that)
         # if selcmd.startswith('Create cmte'):
         #     appCollect = readDownload(sys.argv[1])
         #     appCollect.assignReviewers()
@@ -628,6 +622,7 @@ if __name__ == '__main__':
             ofn = f'CmteRevUpdate-{datestr}.csv'
             writeOut(latestAssignments, 'Assignments', ofn)
 
+
         #
         #  Fac scores
         #
@@ -640,17 +635,18 @@ if __name__ == '__main__':
             currentCol = readFacScores(currentCol)
 
 
-        #
-        #  Fac scores
-        #
         def cleanScore(sc):
             ret = []
             for x in sc:
-                ret.append(x.strip())
+                if type(x) == type('hello'):
+                    ret.append(x.strip())
+                else:
+                    ret.append(x)
             return ret
 
-
-        # read in the fac score file.
+        #
+        # Display and output (csv) of the fac score file.
+        #
         if selcmd.startswith('Disp. Fac'):
             csvlines = []
             report = ''
@@ -658,13 +654,15 @@ if __name__ == '__main__':
                 x=len(currentCol)
             except:
                 error('Display Fac. Score: Read in scores or collection first')
+            # facScoresHeader = ['ID','Area','Name', 'ECE Fac recom.', 'Rsrch', 'Tch','WIRC']
+            facScoresHeader = 'ID; Area; Name; ECE Fac; Rsrch; Tch; WIRC'
             for app in currentCol.app_list:
                 if len(app.facScores) > 0:
                     report += f'{app.iD} - {app.fName} {app.lName}\n'
                     for fs in app.facScores:
                         (reviewer, rsch, tch, wirc) = cleanScore(fs)
                         report += '    ' + str(fs)+'\n'
-                        csvline = f'{app.iD}; {app.fName+' '+app.lName}; '
+                        csvline = f'{app.iD}; {app.area}; {app.fName+' '+app.lName}; '
                         csvline += f'{reviewer}; {rsch}; {tch}; {wirc}'
                         csvlines.append(csvline)
                     report += '\n'
@@ -674,6 +672,7 @@ if __name__ == '__main__':
             datestr = dt.datetime.today().strftime("%d-%b-%y")
             ofn = f'FacultyScores-{datestr}.csv'
             ofp = open(ofn,'w')
+            print(facScoresHeader,file=ofp)
             for l in csvlines:
                 print(l, file=ofp)
             ofp.close()
